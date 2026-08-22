@@ -2,7 +2,7 @@ import os
 import logging
 from fastapi import FastAPI
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from pinecone import Pinecone
 
 # ==========================================
@@ -12,19 +12,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # ==========================================
-# 🧠 VECTOR ENGINE SETUP (CPU OPTIMIZED)
+# 🧠 ULTRA-LIGHTWEIGHT VECTOR ENGINE (ONNX)
 # ==========================================
-# 🚀 FIX: Prevent PyTorch from using too many threads, saving RAM
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-
+# 🚀 FIX: Heavy PyTorch 'sentence-transformers' ki jagah 'fastembed' lagaya gaya hai
+# Yeh exact wahi model chalayega (all-MiniLM-L6-v2) par sirf 120MB RAM mein!
 try:
-    # 🚀 FIX: Explicitly set device to 'cpu'
-    embed_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
-    logger.info("🟢 SentenceTransformer (Vector Brain) Loaded Successfully!")
+    embed_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    logger.info("🟢 FastEmbed (all-MiniLM-L6-v2) Loaded Successfully in Ultra-Low Memory Mode!")
 except Exception as embed_err:
     embed_model = None
-    logger.error(f"🔴 Vector Engine Load Error: {embed_err}")
+    logger.error(f"🔴 FastEmbed Load Error: {embed_err}")
 
 # Pinecone Setup
 pc_api_key = os.getenv("PINECONE_API_KEY")
@@ -40,7 +37,7 @@ if pc_api_key:
 else:
     logger.warning("⚠️ PINECONE_API_KEY is missing from environment variables!")
 
-app = FastAPI(title="Saarthi Vector Brain (Render 2)", version="1.0.0")
+app = FastAPI(title="Saarthi Vector Brain (Render 2)", version="1.1.0")
 
 # 📦 Pydantic Models for requests
 class UpsertReq(BaseModel):
@@ -56,14 +53,15 @@ class DeleteReq(BaseModel):
 
 @app.get("/")
 def root():
-    return {"status": "🟢 Vector Brain is Online and Ready to serve Embeddings!"}
+    return {"status": "🟢 Vector Brain is Online (Low Memory Engine Active)!"}
 
 @app.post("/upsert")
 def upsert_vector(req: UpsertReq):
     if not pc_index or not embed_model:
         return {"error": "Pinecone or Embed Model not configured"}
     try:
-        vector = embed_model.encode(req.text).tolist()
+        # 🚀 FIX: FastEmbed syntax to extract vector list
+        vector = list(embed_model.embed([req.text]))[0].tolist()
         pc_index.upsert(vectors=[(req.id, vector, req.metadata)])
         logger.info(f"✅ Upserted vector id: {req.id}")
         return {"status": "Vector Saved!"}
@@ -76,7 +74,8 @@ def search_vector(req: SearchReq):
     if not pc_index or not embed_model:
         return {"matches": []}
     try:
-        vector = embed_model.encode(req.query).tolist()
+        # 🚀 FIX: FastEmbed syntax to encode query
+        vector = list(embed_model.embed([req.query]))[0].tolist()
         res = pc_index.query(vector=vector, top_k=4, include_metadata=True)
         return res.to_dict()
     except Exception as e:
