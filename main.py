@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from fastembed import TextEmbedding
@@ -17,10 +17,12 @@ load_dotenv()
 
 app = FastAPI(title="Saarthi Vector Brain (Render 2)", version="10.1.0")
 
+# 🚀 NAYA: Security Key (Render 1 se aane wali request ko verify karne ke liye)
+SAARTHI_SERVER_KEY = os.getenv("SAARTHI_SERVER_KEY", "AmitPatel_Jarvis_Core_2026")
+
 # ==========================================
 # 🧠 ULTRA-LIGHTWEIGHT VECTOR ENGINE (ONNX / FastEmbed)
 # ==========================================
-# 🚀 PRESERVED: Your brilliant FastEmbed logic! (120MB RAM instead of heavy PyTorch)
 logger.info("⏳ Loading FastEmbed Model (all-MiniLM-L6-v2)...")
 try:
     embed_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -42,8 +44,9 @@ if PINECONE_API_KEY:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
         
-        # 🚀 NEW: Dynamically checks and creates index if it doesn't exist
-        existing_indexes = [index_info["name"] for index_info in pc.list_indexes()]
+        # 🚀 FIX 1: Updated syntax for latest Pinecone SDK to avoid crash
+        existing_indexes = [idx.name for idx in pc.list_indexes()]
+        
         if PINECONE_INDEX_NAME not in existing_indexes:
             logger.info(f"⏳ Creating Pinecone Index: {PINECONE_INDEX_NAME}...")
             pc.create_index(
@@ -65,7 +68,7 @@ else:
     logger.warning("⚠️ PINECONE_API_KEY is missing from environment variables!")
 
 # ==========================================
-# 📦 PYDANTIC MODELS (Updated to match main.py V49 format)
+# 📦 PYDANTIC MODELS
 # ==========================================
 class UpsertRequest(BaseModel):
     id: str
@@ -99,16 +102,17 @@ def root():
     }
 
 @app.post("/upsert")
-def upsert_vector(req: UpsertRequest):
-    """Converts text memory to numbers and saves to Pinecone"""
+def upsert_vector(req: UpsertRequest, x_api_key: str = Header(None)):
+    # 🚀 FIX 2: Security Check
+    if x_api_key != SAARTHI_SERVER_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized Access")
+
     if not pc_index or not embed_model:
         raise HTTPException(status_code=503, detail="Pinecone or Embed Model not configured")
     
     try:
-        # 🚀 PRESERVED: FastEmbed syntax to extract vector list
         vector = list(embed_model.embed([req.text]))[0].tolist()
         
-        # Add raw text to metadata so Render 1 can read the actual context later
         meta = req.metadata
         meta["text_content"] = req.text 
         
@@ -125,18 +129,19 @@ def upsert_vector(req: UpsertRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/search")
-def search_vector(req: SearchRequest):
-    """Searches for similar context using mathematical distance"""
+def search_vector(req: SearchRequest, x_api_key: str = Header(None)):
+    # 🚀 FIX 2: Security Check
+    if x_api_key != SAARTHI_SERVER_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized Access")
+
     if not pc_index or not embed_model:
         raise HTTPException(status_code=503, detail="Pinecone or Embed Model not configured")
     
     try:
-        # 🚀 PRESERVED: FastEmbed syntax to encode query
         vector = list(embed_model.embed([req.query]))[0].tolist()
         
         res = pc_index.query(vector=vector, top_k=req.top_k, include_metadata=True)
         
-        # 🚀 NEW: Formatted to EXACTLY match what main.py V49 expects
         matches = []
         for match in res.get("matches", []):
             matches.append({
@@ -151,8 +156,11 @@ def search_vector(req: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/delete")
-def delete_vector(req: DeleteRequest):
-    """Deletes specific memory from Vector DB"""
+def delete_vector(req: DeleteRequest, x_api_key: str = Header(None)):
+    # 🚀 FIX 2: Security Check
+    if x_api_key != SAARTHI_SERVER_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized Access")
+
     if not pc_index:
         raise HTTPException(status_code=503, detail="Pinecone not configured")
     
@@ -166,6 +174,5 @@ def delete_vector(req: DeleteRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    # 🚀 PRESERVED: Automatically binds to Render's dynamic port
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
